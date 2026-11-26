@@ -92,8 +92,8 @@
       </div>
     </div>
     <div class="grid2">
-      <div><label for="cirujano">Cirujano</label><input id="cirujano" list="lstCir" autocomplete="off" placeholder="Nombre"></div>
-      <div><label for="pastero">Pastero</label><input id="pastero" list="lstPas" autocomplete="off" placeholder="Nombre"></div>
+      <div><label for="cirujano">Cirujano</label><select id="cirujano"></select></div>
+      <div><label for="pastero">Pastero</label><select id="pastero"></select></div>
     </div>
     <datalist id="lstCir"></datalist><datalist id="lstPas"></datalist>
     <div class="hint">La fecha es siempre la de hoy y el tiempo lo pone la hora del teléfono: Ordinaria antes de las 12:00 md, Extra desde las 12:00 md (solo lunes a jueves).</div>
@@ -156,7 +156,7 @@
 </main>
 <div id="admin" class="admin" hidden>
  <div class="admin-in">
-  <div class="admin-top"><b>Opciones <small style="font-weight:400;color:var(--gris)">· versión 5</small></b><button id="btnCerrar" type="button">✕ Cerrar</button></div>
+  <div class="admin-top"><b>Opciones <small style="font-weight:400;color:var(--gris)">· versión 6</small></b><button id="btnCerrar" type="button">✕ Cerrar</button></div>
   <section class="card">
     <h2>Captura atrasada (supervisor)</h2>
     <div id="supOff">
@@ -215,6 +215,19 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
   function showMsg(t,err){const m=$('msg');m.textContent=t;m.className='msg '+(err?'err':'ok');clearTimeout(showMsg._t);showMsg._t=setTimeout(()=>{m.className='msg';},err?7000:2500);}
 
+  // ---------- personal (lista fija) ----------
+  const PERSONAL=["Andrey Muñoz Cortes", "Derin Corea Mora", "Donovan Ugarte Tenorio", "Kendall Jimenez Navarro", "Lidianeth Navarro Lopez", "Oscar Cedeño Caballero", "Ralfi Alberto Obando Porras", "Victor Campos Chavez"];
+  function llenarPersonal(){
+    ['cirujano','pastero'].forEach(id=>{$(id).innerHTML='<option value="">— Elegir —</option>'+PERSONAL.map(n=>'<option>'+esc(n)+'</option>').join('');});
+  }
+  function setSel(id,v){
+    const s=$(id);v=(v||'').trim();
+    if(v&&![...s.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=v+' (registro anterior)';o.dataset.tmp='1';s.appendChild(o);}
+    s.value=v;
+  }
+  function limpiarTmp(){['cirujano','pastero'].forEach(id=>$(id).querySelectorAll('option[data-tmp]').forEach(o=>{if(o.selected)$(id).value='';o.remove();}));}
+  llenarPersonal();
+
   // ---------- almacenamiento ----------
   function load(){
     try{regs=JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){regs=[];}
@@ -222,8 +235,8 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     regs=regs.filter(r=>r.evento!=='R');
     try{const b=JSON.parse(localStorage.getItem(KEYB)||'null');if(b&&b.p&&(!base||(b.gen||'')>=(base.gen||'')))base=b;}catch(e){}
     try{const h=JSON.parse(localStorage.getItem(KEYH)||'{}');
-      if(h.cirujano)$('cirujano').value=h.cirujano;
-      if(h.pastero)$('pastero').value=h.pastero;
+      if(PERSONAL.includes(h.cirujano))$('cirujano').value=h.cirujano;
+      if(PERSONAL.includes(h.pastero))$('pastero').value=h.pastero;
       if(h.lote)$('lote').value=h.lote;
       if(h.centro)$('centro').value=h.centro;
     }catch(e){}
@@ -392,7 +405,8 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
       applyTiempo();
       if(sel.tiempo==='2'&&!extraHoy()){showMsg('BLOQUEADO: hoy no hay horas extra. Después de las 12:00 md no se pueden registrar cirugías (solo lunes a jueves).',true);return;}
     }else{sel.tiempo=prevE.tiempo;$('fecha').value=prevE.fecha;}
-    const f=$('fecha').value, cir=nombre($('cirujano').value), pas=nombre($('pastero').value);
+    const f=$('fecha').value, cir=$('cirujano').value.trim(), pas=$('pastero').value.trim();
+    if(cir&&pas&&cir===pas){showMsg('El cirujano y el pastero no pueden ser la misma persona.',true);return;}
     const lote=$('lote').value.trim(), centro=$('centro').value.trim(), hilera=$('hilera').value.trim(), palma=$('palma').value.trim();
     const faltan=[];
     if(!f)faltan.push('fecha');if(!cir)faltan.push('cirujano');
@@ -425,7 +439,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     sel.clasif='';sel.evento='';renderPalm();
   }
   function endEdit(focus){
-    editId=null;$('fecha').value=hoy();applyTiempo();$('formCard').classList.remove('editing');$('formTitle').textContent='Palma tratada';
+    editId=null;limpiarTmp();$('fecha').value=hoy();applyTiempo();$('formCard').classList.remove('editing');$('formTitle').textContent='Palma tratada';
     $('btnGuardar').textContent='Guardar palma';$('btnCancelar').style.display='none';
     clearPalm();if(focus)$('palma').focus();
   }
@@ -433,7 +447,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   function startEdit(id){
     const r=regs.find(x=>x.id===id);if(!r)return;
     editId=id;
-    $('fecha').value=r.fecha;$('cirujano').value=r.cirujano;$('pastero').value=r.pastero||'';
+    $('fecha').value=r.fecha;setSel('cirujano',r.cirujano);setSel('pastero',r.pastero||'');
     $('lote').value=r.lote;$('centro').value=r.centro;$('hilera').value=r.hilera;$('palma').value=r.palma;
     $('racimos').value=r.racimos??'';$('larvas').value=r.larvas??'';$('pupas').value=r.pupas??'';$('obs').value=r.obs||'';
     sel.tiempo=r.tiempo;sel.evento=r.evento;sel.clasif=r.clasif||'';
