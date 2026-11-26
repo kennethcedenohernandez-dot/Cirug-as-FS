@@ -240,7 +240,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   const HORA_EXTRA=12;
   const tiempoAuto=()=>new Date().getHours()>=HORA_EXTRA?'2':'1';
   const extraHoy=()=>{const d=new Date().getDay();return d>=1&&d<=4;};
-  const CLAVE_HASH='673da1710953522d31308c5c0a20738c467ae49a958eb0eb410555641ee372d4', SUP_MIN=15;
+  const CLAVE_HASH='c3d004bdb970a9601795d6d90c2e183312c972bf356ad2efc2cba2683ec877f4', SUP_MIN=15;
   let supHasta=0;
   const sup=()=>Date.now()<supHasta;
   async function sha(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');}
