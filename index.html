@@ -124,10 +124,11 @@
     </div>
 
     <div class="grid3">
-      <div><label for="racimos">Racimos cortados</label><input id="racimos" inputmode="numeric" placeholder="0"></div>
-      <div><label for="larvas">Larvas</label><input id="larvas" inputmode="numeric" placeholder="0"></div>
-      <div><label for="pupas">Pupas</label><input id="pupas" inputmode="numeric" placeholder="0"></div>
+      <div><label for="racimos">Racimos cortados</label><input id="racimos" inputmode="numeric" placeholder="—" required></div>
+      <div><label for="larvas">Larvas</label><input id="larvas" inputmode="numeric" placeholder="—" required></div>
+      <div><label for="pupas">Pupas</label><input id="pupas" inputmode="numeric" placeholder="—" required></div>
     </div>
+    <div class="hint">Obligatorios. Si no se cortaron racimos o no hubo larvas o pupas, escriba 0.</div>
 
     <label for="obs">Observaciones</label>
     <textarea id="obs" placeholder="Opcional"></textarea>
@@ -156,7 +157,7 @@
 </main>
 <div id="admin" class="admin" hidden>
  <div class="admin-in">
-  <div class="admin-top"><b>Opciones <small style="font-weight:400;color:var(--gris)">· versión 6</small></b><button id="btnCerrar" type="button">✕ Cerrar</button></div>
+  <div class="admin-top"><b>Opciones <small style="font-weight:400;color:var(--gris)">· versión 7</small></b><button id="btnCerrar" type="button">✕ Cerrar</button></div>
   <section class="card">
     <h2>Captura atrasada (supervisor)</h2>
     <div id="supOff">
@@ -413,6 +414,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     if(!lote)faltan.push('lote');if(!centro)faltan.push('centro');if(!hilera)faltan.push('hilera');if(!palma)faltan.push('palma');
     if(!sel.evento)faltan.push('evento');
     if(sel.evento&&sel.evento!=='0'&&!sel.clasif)faltan.push('leve/severa');
+    [['racimos','racimos cortados'],['larvas','larvas'],['pupas','pupas']].forEach(([id,n])=>{const v=$(id).value.trim();if(v===''||!/^\d+$/.test(v))faltan.push(n+' (0 si no hay)');});
     if(faltan.length){showMsg('Falta: '+faltan.join(', '),true);return;}
     const info=palmInfo();
     if(!permitidos(info).has(sel.evento)){
