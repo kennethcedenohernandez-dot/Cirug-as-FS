@@ -82,12 +82,13 @@
   <section class="card">
     <h2>Datos del día</h2>
     <div class="grid2">
-      <div><label for="fecha">Fecha</label><input type="date" id="fecha"></div>
+      <div><label for="fecha">Fecha</label><input type="date" id="fecha" readonly></div>
       <div><label>Tiempo</label>
         <div class="seg" data-field="tiempo">
           <button type="button" data-v="1">Ordinaria</button>
           <button type="button" data-v="2">Extra</button>
         </div>
+        <div class="hint" id="tiempoHint"></div>
       </div>
     </div>
     <div class="grid2">
@@ -95,7 +96,7 @@
       <div><label for="pastero">Pastero</label><input id="pastero" list="lstPas" autocomplete="off" placeholder="Nombre"></div>
     </div>
     <datalist id="lstCir"></datalist><datalist id="lstPas"></datalist>
-    <div class="hint">Estos datos se mantienen entre una palma y la siguiente.</div>
+    <div class="hint">La fecha es siempre la de hoy y el tiempo lo pone la hora del teléfono: Ordinaria antes de las 12:00 md, Extra desde las 12:00 md (solo lunes a jueves).</div>
   </section>
 
   <section class="card" id="formCard">
@@ -209,7 +210,6 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     try{const h=JSON.parse(localStorage.getItem(KEYH)||'{}');
       if(h.cirujano)$('cirujano').value=h.cirujano;
       if(h.pastero)$('pastero').value=h.pastero;
-      if(h.tiempo)sel.tiempo=h.tiempo;
       if(h.lote)$('lote').value=h.lote;
       if(h.centro)$('centro').value=h.centro;
     }catch(e){}
@@ -220,6 +220,24 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   }
   function saveHdr(){
     try{localStorage.setItem(KEYH,JSON.stringify({cirujano:$('cirujano').value.trim(),pastero:$('pastero').value.trim(),tiempo:sel.tiempo,lote:$('lote').value.trim(),centro:$('centro').value.trim()}));}catch(e){}
+  }
+
+  // ---------- tiempo automático (Ordinaria / Extra según la hora) ----------
+  const HORA_EXTRA=12;
+  const tiempoAuto=()=>new Date().getHours()>=HORA_EXTRA?'2':'1';
+  const extraHoy=()=>{const d=new Date().getDay();return d>=1&&d<=4;};
+  function applyTiempo(){
+    if(!editId){
+      if($('fecha').value!==hoy()){$('fecha').value=hoy();$('filtroFecha').value=hoy();render();}
+      sel.tiempo=tiempoAuto();
+    }
+    document.querySelectorAll('.seg[data-field="tiempo"] button').forEach(b=>{b.disabled=b.dataset.v!==sel.tiempo;});
+    const h=$('tiempoHint');
+    if(editId)h.textContent='Registro guardado como '+(sel.tiempo==='2'?'Extra':'Ordinaria')+'. No se puede cambiar.';
+    else if(sel.tiempo==='1')h.textContent='Pasa sola a Extra a las 12:00 md.';
+    else h.textContent=extraHoy()?'Horas extra (desde las 12:00 md).':'Hoy no hay horas extra: no se pueden registrar cirugías después de las 12:00 md.';
+    h.style.color=(!editId&&sel.tiempo==='2'&&!extraHoy())?'var(--rojo)':'';
+    paintSeg();
   }
 
   // ---------- información de la palma (base + capturas) ----------
@@ -297,8 +315,9 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     g.addEventListener('click',e=>{
       const b=e.target.closest('button');if(!b||b.disabled)return;
       const f=g.dataset.field;
-      sel[f]=(sel[f]===b.dataset.v&&f!=='tiempo')?'':b.dataset.v;
-      paintSeg();if(f==='tiempo')saveHdr();
+      if(f==='tiempo')return;
+      sel[f]=sel[f]===b.dataset.v?'':b.dataset.v;
+      paintSeg();
     });
   });
   $('segEvento').addEventListener('click',e=>{
@@ -321,6 +340,11 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
 
   // ---------- guardar ----------
   $('btnGuardar').addEventListener('click',()=>{
+    const prevE=editId?regs.find(r=>r.id===editId):null;
+    if(!prevE){
+      applyTiempo();
+      if(sel.tiempo==='2'&&!extraHoy()){showMsg('BLOQUEADO: hoy no hay horas extra. Después de las 12:00 md no se pueden registrar cirugías (solo lunes a jueves).',true);return;}
+    }else{sel.tiempo=prevE.tiempo;$('fecha').value=prevE.fecha;}
     const f=$('fecha').value, cir=nombre($('cirujano').value), pas=nombre($('pastero').value);
     const lote=$('lote').value.trim(), centro=$('centro').value.trim(), hilera=$('hilera').value.trim(), palma=$('palma').value.trim();
     const faltan=[];
@@ -335,7 +359,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     }
     if(info.b&&(info.b.c==='S'||info.b.s==='NO RECUPERADA')&&!confirm('La palma está confirmada NO RECUPERADA. ¿Guardar de todos modos?'))return;
     if(info.b&&info.b.s==='RECUPERADA'&&!confirm('La palma figura como RECUPERADA. ¿Volvió a enfermar y se operó?'))return;
-    const prev=editId?regs.find(r=>r.id===editId):null;
+    const prev=prevE;
     const rec={
       id:editId||(Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
       fecha:f,tiempo:sel.tiempo,cirujano:cir,pastero:pas,lote,centro,hilera,palma,
@@ -354,7 +378,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     sel.clasif='';sel.evento='';renderPalm();
   }
   function endEdit(focus){
-    editId=null;$('formCard').classList.remove('editing');$('formTitle').textContent='Palma tratada';
+    editId=null;$('fecha').value=hoy();applyTiempo();$('formCard').classList.remove('editing');$('formTitle').textContent='Palma tratada';
     $('btnGuardar').textContent='Guardar palma';$('btnCancelar').style.display='none';
     clearPalm();if(focus)$('palma').focus();
   }
@@ -366,7 +390,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     $('lote').value=r.lote;$('centro').value=r.centro;$('hilera').value=r.hilera;$('palma').value=r.palma;
     $('racimos').value=r.racimos??'';$('larvas').value=r.larvas??'';$('pupas').value=r.pupas??'';$('obs').value=r.obs||'';
     sel.tiempo=r.tiempo;sel.evento=r.evento;sel.clasif=r.clasif||'';
-    renderPalm();
+    applyTiempo();renderPalm();
     $('formCard').classList.add('editing');$('formTitle').textContent='Editando registro';
     $('btnGuardar').textContent='Actualizar';$('btnCancelar').style.display='block';
     $('formCard').scrollIntoView({behavior:'smooth'});
@@ -572,6 +596,9 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   $('fecha').value=hoy();
   paintSeg();render();
   $('filtroFecha').value=$('fecha').value;render();
+  applyTiempo();
+  setInterval(applyTiempo,20000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)applyTiempo();});
   window.__app={leerBase,palmInfo,permitidos,get base(){return base;}};
 })();
 </script>
