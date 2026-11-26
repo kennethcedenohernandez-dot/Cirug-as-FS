@@ -158,6 +158,20 @@
  <div class="admin-in">
   <div class="admin-top"><b>Opciones</b><button id="btnCerrar" type="button">✕ Cerrar</button></div>
   <section class="card">
+    <h2>Captura atrasada (supervisor)</h2>
+    <div id="supOff">
+      <label for="clave">Clave</label>
+      <input id="clave" type="password" inputmode="numeric" autocomplete="off">
+      <button class="btn btn-p" id="btnDesbloq" type="button">Desbloquear</button>
+    </div>
+    <div id="supOn" style="display:none">
+      <div class="ro" id="supInfo"></div>
+      <button class="btn btn-d" id="btnBloq" type="button">Bloquear ahora</button>
+    </div>
+    <div class="hint">Con la clave se puede elegir otra fecha (hasta 15 días atrás) y Ordinaria o Extra, y corregir registros. Se vuelve a bloquear sola a los 15 minutos. Lo que se guarde así sale marcado en la columna "Autorizado" del Excel.</div>
+  </section>
+
+  <section class="card">
     <h2>Base de seguimiento</h2>
     <div class="ro" id="baseInfo"></div>
     <button class="btn btn-s" id="btnBase" type="button">Cargar Excel de seguimiento actualizado</button>
@@ -226,7 +240,35 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   const HORA_EXTRA=12;
   const tiempoAuto=()=>new Date().getHours()>=HORA_EXTRA?'2':'1';
   const extraHoy=()=>{const d=new Date().getDay();return d>=1&&d<=4;};
+  const CLAVE_HASH='673da1710953522d31308c5c0a20738c467ae49a958eb0eb410555641ee372d4', SUP_MIN=15;
+  let supHasta=0;
+  const sup=()=>Date.now()<supHasta;
+  async function sha(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');}
+  const diasAtras=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  function renderSup(){
+    const on=sup();
+    $('supOff').style.display=on?'none':'block';$('supOn').style.display=on?'block':'none';
+    if(on){const h=new Date(supHasta);$('supInfo').innerHTML='<b>Desbloqueado</b> hasta las '+String(h.getHours()).padStart(2,'0')+':'+String(h.getMinutes()).padStart(2,'0')+'. Puede cambiar fecha y tiempo.';}
+    const f=$('fecha');f.readOnly=!on;f.max=hoy();f.min=on?diasAtras(15):hoy();
+  }
+  $('btnDesbloq').addEventListener('click',async()=>{
+    const c=$('clave').value.trim();$('clave').value='';
+    let ok=false;try{ok=(await sha('cirugiasFS:'+c))===CLAVE_HASH;}catch(e){alert('No se pudo verificar la clave en este navegador.');return;}
+    if(!ok){alert('Clave incorrecta.');return;}
+    supHasta=Date.now()+SUP_MIN*60000;renderSup();applyTiempo();
+    alert('Desbloqueado por '+SUP_MIN+' minutos.');
+  });
+  $('btnBloq').addEventListener('click',()=>{supHasta=0;renderSup();applyTiempo();});
+  let supEra=false;
   function applyTiempo(){
+    const on=sup();
+    if(supEra&&!on){supEra=false;renderSup();if(!editId)$('fecha').value=hoy();}
+    if(on){supEra=true;renderSup();
+      document.querySelectorAll('.seg[data-field="tiempo"] button').forEach(b=>{b.disabled=false;});
+      const h=$('tiempoHint');h.style.color='var(--rojo)';
+      const hh=new Date(supHasta);h.textContent='Modo supervisor: elija fecha y tiempo. Se bloquea a las '+String(hh.getHours()).padStart(2,'0')+':'+String(hh.getMinutes()).padStart(2,'0')+'.';
+      paintSeg();return;
+    }
     if(!editId){
       if($('fecha').value!==hoy()){$('fecha').value=hoy();$('filtroFecha').value=hoy();render();}
       sel.tiempo=tiempoAuto();
@@ -315,7 +357,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     g.addEventListener('click',e=>{
       const b=e.target.closest('button');if(!b||b.disabled)return;
       const f=g.dataset.field;
-      if(f==='tiempo')return;
+      if(f==='tiempo'&&!sup())return;
       sel[f]=sel[f]===b.dataset.v?'':b.dataset.v;
       paintSeg();
     });
@@ -341,7 +383,12 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   // ---------- guardar ----------
   $('btnGuardar').addEventListener('click',()=>{
     const prevE=editId?regs.find(r=>r.id===editId):null;
-    if(!prevE){
+    const aut=sup();
+    if(aut){
+      const fv=$('fecha').value;
+      if(!fv||fv>hoy()){showMsg('Fecha inválida: no puede ser futura.',true);return;}
+      if(fv<diasAtras(15)){showMsg('Fecha inválida: máximo 15 días atrás.',true);return;}
+    }else if(!prevE){
       applyTiempo();
       if(sel.tiempo==='2'&&!extraHoy()){showMsg('BLOQUEADO: hoy no hay horas extra. Después de las 12:00 md no se pueden registrar cirugías (solo lunes a jueves).',true);return;}
     }else{sel.tiempo=prevE.tiempo;$('fecha').value=prevE.fecha;}
@@ -360,7 +407,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     if(info.b&&(info.b.c==='S'||info.b.s==='NO RECUPERADA')&&!confirm('La palma está confirmada NO RECUPERADA. ¿Guardar de todos modos?'))return;
     if(info.b&&info.b.s==='RECUPERADA'&&!confirm('La palma figura como RECUPERADA. ¿Volvió a enfermar y se operó?'))return;
     const prev=prevE;
-    const rec={
+    const rec={aut:aut||!!(prev&&prev.aut),
       id:editId||(Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
       fecha:f,tiempo:sel.tiempo,cirujano:cir,pastero:pas,lote,centro,hilera,palma,
       evento:sel.evento,clasif:sel.evento==='0'?'':sel.clasif,
@@ -414,7 +461,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
     $('lista').innerHTML=vis.length?vis.map(r=>{
       const extra=[r.clasif?(r.evento==='1'?'Primera: ':'Reincidencia: ')+r.clasif:'',r.racimos?('racimos '+r.racimos):'',r.larvas?('larvas '+r.larvas):'',r.pupas?('pupas '+r.pupas):''].filter(Boolean).join(' · ');
       return '<div class="rec"><div><div class="t">L'+esc(r.lote)+' · C'+esc(r.centro)+' · H'+esc(r.hilera)+' · P'+esc(r.palma)+'<span class="tag '+(r.evento==='0'?'abl':'')+'">'+evtName(r.evento)+'</span></div>'+
-        '<div class="s">'+fmtF(r.fecha)+' · '+esc(r.cirujano)+(r.pastero?' / '+esc(r.pastero):'')+' · '+(r.tiempo==='2'?'Extra':'Ordinaria')+'</div>'+
+        '<div class="s">'+fmtF(r.fecha)+' · '+esc(r.cirujano)+(r.pastero?' / '+esc(r.pastero):'')+' · '+(r.tiempo==='2'?'Extra':'Ordinaria')+(r.aut?' <span class="tag abl">autorizado</span>':'')+'</div>'+
         (extra?'<div class="s">'+esc(extra)+'</div>':'')+(r.obs?'<div class="s">“'+esc(r.obs)+'”</div>':'')+
         '</div><div class="acts"><button data-ed="'+r.id+'">Editar</button><button class="del" data-del="'+r.id+'">✕</button></div></div>';
     }).join(''):'<div class="hint">Sin registros.</div>';
@@ -542,7 +589,7 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
   function colL(i){let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;}
   function serial(iso){const[a,m,d]=iso.split('-').map(Number);return(Date.UTC(a,m-1,d)-Date.UTC(1899,11,30))/86400000;}
   function buildXlsx(rows){
-    const H=['Fecha','Cirujano','Lote','Centro','Hilera','Palma','COD. ENF','Primera Cirugía Leve','Primera Cirugía Severa','#','Reincidencia Leve','Reincidencia Severa','Larvas','Pupas','Racimos cortados','Fecha proxima de inyeccion 2 meses','Fecha maxima de inyeccion 4 meses','ESTADO','CONFIRMADO NO RECUPERADA','TOTAL DIAS','Tiempo','Pastero','Observaciones','Registrado'];
+    const H=['Fecha','Cirujano','Lote','Centro','Hilera','Palma','COD. ENF','Primera Cirugía Leve','Primera Cirugía Severa','#','Reincidencia Leve','Reincidencia Severa','Larvas','Pupas','Racimos cortados','Fecha proxima de inyeccion 2 meses','Fecha maxima de inyeccion 4 meses','ESTADO','CONFIRMADO NO RECUPERADA','TOTAL DIAS','Tiempo','Pastero','Observaciones','Registrado','Autorizado'];
     const nt=v=>{if(v===null||v===undefined||String(v).trim()==='')return null;const n=Number(v);return isNaN(n)?{t:String(v)}:{n};};
     const X={t:'X'};
     const reg=c=>{if(!c)return'';const d=new Date(c);if(isNaN(d))return'';const p=n=>String(n).padStart(2,'0');return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes());};
@@ -551,9 +598,9 @@ const BASE_EMBEBIDA={"gen":"2026-11-21","src":"Libro2.xlsx","p":{"81-25-1074":{"
       pr&&r.clasif==='LEVE'?X:null,pr&&r.clasif==='SEVERA'?X:null,{n:Number(e)},
       re&&r.clasif==='LEVE'?X:null,re&&r.clasif==='SEVERA'?X:null,
       r.larvas==null?null:{n:r.larvas},r.pupas==null?null:{n:r.pupas},r.racimos==null?null:{n:r.racimos},
-      null,null,null,null,null,{n:Number(r.tiempo)},r.pastero?{t:r.pastero}:null,r.obs?{t:r.obs}:null,{t:reg(r.creado)}];});
+      null,null,null,null,null,{n:Number(r.tiempo)},r.pastero?{t:r.pastero}:null,r.obs?{t:r.obs}:null,{t:reg(r.creado)},r.aut?{t:'SÍ (clave)'}:null];});
     let x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>';
-    const W=[11,18,6,7,7,7,9,9,9,5,9,9,7,7,9,12,12,12,12,8,7,16,28,16];
+    const W=[11,18,6,7,7,7,9,9,9,5,9,9,7,7,9,12,12,12,12,8,7,16,28,16,12];
     W.forEach((w,i)=>x+='<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>');
     x+='</cols><sheetData><row r="1">'+H.map((h,i)=>'<c r="'+colL(i)+'1" t="inlineStr" s="2"><is><t>'+xe(h)+'</t></is></c>').join('')+'</row>';
     data.forEach((row,ri)=>{const rn=ri+2;x+='<row r="'+rn+'">';
